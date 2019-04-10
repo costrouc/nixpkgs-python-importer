@@ -84,11 +84,7 @@ def try_nixpkgs(topmost_name):
                 if not os.path.exists(store_paths[0]):
                     raise ex
 
-        # Guess sys.path-usable subpaths from them (and flatten the list)
-        return sum((
-            glob.glob(os.path.join(p, 'lib', 'py*', '*-packages'))
-            for p in store_paths
-        ), [])
+        return store_paths
 
     except Exception as e:
         raise ImportError(e)
@@ -102,9 +98,23 @@ class NixpkgsFinder:
         '''
         if module_name.startswith('nixpkgs.'):
             try_name = module_name.split('.')[1]
-            required_paths = try_nixpkgs(try_name)
-            if required_paths:
+            store_paths = try_nixpkgs(try_name)
+            self._add_bin_paths(store_paths)
+            if store_paths:
+                # Guess sys.path-usable subpaths from them (and flatten the list)
+                required_paths = sum((
+                    glob.glob(os.path.join(p, 'lib', 'py*', '*-packages'))
+                    for p in store_paths
+                ), [])
                 return FromExtraPathsLoader(required_paths)
+
+    def _add_bin_paths(self, store_paths):
+        paths = os.environ['PATH'].split(':')
+        for store_path in store_paths:
+            bin_path = os.path.join(store_path, 'bin')
+            if bin_path not in paths and os.path.isdir(bin_path):
+                paths.insert(0, bin_path)
+                os.environ['PATH'] = ':'.join(paths)
 
 
 class NixPackage:
